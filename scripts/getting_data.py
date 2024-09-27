@@ -1,0 +1,6 @@
+# импорт всяких библиотек
+class json_getter():
+    def __init__(self, *args):
+        pass
+    def get(self, *args):
+        return
