@@ -4,3 +4,5 @@ class json_getter():
         pass
     def get(self, *args):
         return
+def func(a, b):
+    return a+b

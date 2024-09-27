@@ -18,7 +18,7 @@ class profanity_processing():
         line_info = self.censor_ru.clean_line(text)
         _word = line_info[3][0] if line_info[1] else line_info[4][0] if line_info[2] else None
         return not _word is None, _word, line_info
-    def replace_profanity(self, text, ratio_to_keep = 0.5):
+    def transform(self, text, ratio_to_keep = 0.5):
         check_result = self.check_for_profanity(text)
         if check_result[0]:
             sentense_with_profanity = check_result[2][0]
@@ -41,5 +41,5 @@ if __name__ == "__main__":
     """
     comment = "Сука, как же я блять ненавижу их!"
     profanity_proc = profanity_processing()
-    print(profanity_proc.replace_profanity(comment, ratio_to_keep=0.6))
+    print(profanity_proc.transform(comment, ratio_to_keep=0.6))
     # Результат: С**а, как же я б**ть ненавижу их!
