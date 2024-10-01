@@ -1,23 +1,18 @@
-import numpy as np
+import os
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 from sklearn.decomposition import TruncatedSVD, PCA
-from sklearn.cluster import Birch
-from sklearn.metrics import silhouette_score
+from sklearn.cluster import DBSCAN, KMeans
+from sklearn.metrics import pairwise_distances, silhouette_score
+import numpy as np
+from embedding_model import *
 #import matplotlib.pyplot as plt
+#import pandas as pd
 
 
 class Clasterer:
-    def __init__(self, method='svd', n_components=50, threshold=0.5, max_clusters=10):
-        """Инициализация SVD + Birch.
-               Параметры:
-               n_components : int, опционально (по умолчанию 50)
-                   Количество компонент для SVD.
-               threshold : float, опционально (по умолчанию 0.5)
-                   Порог чувствительности для Birch.
-                max_clusters : int, опционально (по умолчанию 10)
-               Максимальное количество кластеров для оценки, если не указано n_clusters.
-               """
+    def __init__(self, method='svd', n_components=2, max_clusters=10):
+        """Инициализация SVD + выбор кластеризации (K-Means и DBSCAN)"""
         self.n_components = n_components
-        self.threshold = threshold
         self.max_clusters = max_clusters
         self.method = method
 
@@ -29,77 +24,93 @@ class Clasterer:
             raise ValueError("Invalid method. Choose 'svd' or 'pca'.")
 
     def transform(self, embeddings):
-        """ Обучает кластеризатор на данных
-            Параметры:
-               embeddings : np.ndarray
-                   Входной массив эмбеддингов (размерности N x M).
-
-            Возвращает:
-               embeddings_svd : np.ndarray
-                   Массив эмбеддингов после применения SVD (размерности N x n_components).
-               labels : np.ndarray
-                   Массив меток кластеризации, соответствующих каждому эмбеддингу.
-               """
-
+        """Уменьшает размерность и применяет два метода кластеризации (K-Means и DBSCAN)"""
         if not isinstance(embeddings, np.ndarray):
             raise ValueError("Входные данные должны быть массивом numpy.")
         if embeddings.shape[1] < self.n_components:
-            raise ValueError(f"Число компонент SVD ({self.n_components}) не может быть больше числа признаков ({embeddings.shape[1]})")
+            raise ValueError(f"Число компонент ({self.n_components}) не может быть больше числа признаков ({embeddings.shape[1]})")
 
         embeddings_reduced = self.reducer.fit_transform(embeddings)
+        kmeans_labels, kmeans_silhouette = self.kmeans_clustering(embeddings_reduced)
+        dbscan_labels, dbscan_silhouette = self.dbscan_clustering(embeddings_reduced)
 
-        #силуэтный коэффициент
-        best_n_clusters = 2
-        best_silhouette_score = -1
+        if kmeans_silhouette > dbscan_silhouette:
+            print(f"Лучший метод: K-Means с силуэтным коэффициентом {kmeans_silhouette:.4f}")
+            return embeddings_reduced, kmeans_labels
+        else:
+            print(f"Лучший метод: DBSCAN с силуэтным коэффициентом {dbscan_silhouette:.4f}")
+            return embeddings_reduced, dbscan_labels
+
+    def kmeans_clustering(self, embeddings):
+        """Подбор гиперпараметров и кластеризация с помощью K-Means (начинаем с 3 кластеров)"""
+        best_k = 3
+        best_silhouette = -1
         best_labels = None
 
-        for n_clusters in range(2, self.max_clusters + 1):
-            birch_model = Birch(threshold=self.threshold, n_clusters=n_clusters)
-            labels = birch_model.fit_predict(embeddings_reduced)
+        for k in range(3, self.max_clusters + 1):
+            kmeans = KMeans(n_clusters=k, random_state=42)
+            labels = kmeans.fit_predict(embeddings)
+            silhouette_avg = silhouette_score(embeddings, labels)
 
-            if len(np.unique(labels)) > 1:  # избегаем случаев, когда все данные в одном кластере
-                silhouette_avg = silhouette_score(embeddings_reduced, labels)
-                print(f'n_clusters: {n_clusters}, Silhouette Score: {silhouette_avg:.4f}')
+            print(f"K-Means (k={k}): силуэтный коэффициент = {silhouette_avg:.4f}")
 
-                if silhouette_avg > best_silhouette_score:
-                    best_silhouette_score = silhouette_avg
-                    best_n_clusters = n_clusters
-                    best_labels = labels
+            if silhouette_avg > best_silhouette:
+                best_silhouette = silhouette_avg
+                best_k = k
+                best_labels = labels
 
-        print(f'Best n_clusters: {best_n_clusters}, Best Silhouette Score: {best_silhouette_score:.4f}')
-        self.birch = Birch(threshold=self.threshold, n_clusters=best_n_clusters)
-        final_labels = self.birch.fit_predict(embeddings_reduced)
+        print(f"Лучший K для K-Means: {best_k}, силуэтный коэффициент: {best_silhouette:.4f}")
+        return best_labels, best_silhouette
 
-        return embeddings_reduced, final_labels
+    def dbscan_clustering(self, embeddings):
+        """Подбор гиперпараметров и кластеризация с помощью DBSCAN (минимум 3 кластера)"""
+        best_eps = 0.1
+        best_min_samples = 5
+        best_silhouette = -1
+        best_labels = None
 
+        for eps in np.arange(0.1, 2.0, 0.1):
+            for min_samples in range(3, 11):
+                dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+                labels = dbscan.fit_predict(embeddings)
 
-    def predict(self, embeddings):
-        """Понижает размерность и возвращает метки кластеров.
+                num_clusters = len(set(labels)) - (1 if -1 in labels else 0)  # количество кластеров без шумовых точек (-1)
 
-            Параметры:
-               embeddings : np.ndarray
-                   Входной массив эмбеддингов (размерности N x M).
+                if num_clusters >= 3:
+                    silhouette_avg = silhouette_score(embeddings, labels)
 
-            Возвращает:
-               labels : np.ndarray
-                   Массив меток кластеризации.
-               """
-        _, labels = self.transform(embeddings)
-        return labels
+                    print(f"DBSCAN (eps={eps:.1f}, min_samples={min_samples}): силуэтный коэффициент = {silhouette_avg:.4f}")
 
-    #def plot_clusters(self, embeddings_svd, labels):
-    #    tsne = TSNE(n_components=2, random_state=42)
-    #    embeddings_2d = tsne.fit_transform(embeddings_svd)
+                    if silhouette_avg > best_silhouette:
+                        best_silhouette = silhouette_avg
+                        best_eps = eps
+                        best_min_samples = min_samples
+                        best_labels = labels
 
+        if best_labels is None:
+            raise ValueError("Не удалось найти параметры DBSCAN, чтобы получить минимум 3 кластера.")
+
+        print(f"Лучший eps для DBSCAN: {best_eps}, лучший min_samples: {best_min_samples}, силуэтный коэффициент: {best_silhouette:.4f}")
+        return best_labels, best_silhouette
+
+    #def plot_clusters(self, embeddings_reduced, labels):
+    #    """Отображает кластеризованные данные на 2D-графике"""
     #    plt.figure(figsize=(10, 6))
-    #    plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], c=labels, cmap='viridis', s=50, marker='o')
+    #    plt.scatter(embeddings_reduced[:, 0], embeddings_reduced[:, 1], c=labels, cmap='viridis', s=50, marker='o')
     #    plt.colorbar()
-    #    plt.title('t-SNE Clusters Visualization')
+    #    plt.title('Clusters Visualization')
     #    plt.show()
 
-
-# embeddings = np.random.rand(100, 300)
-# clusterer = Clasterer(n_components=50, threshold=0.7, max_clusters=10)
-# embeddings_svd, cluster_labels = clusterer.transform(embeddings)
-# print("Размерность после SVD:", embeddings_svd.shape)
+# data = pd.read_csv("motivations.csv")
+# phrases = data['Phrase'].tolist()
+#
+# embedder = RuBertEmbedder()
+# embeddings = embedder.embed(phrases)
+#
+# clusterer = Clasterer(n_components=2, max_clusters=10)
+# embeddings_reduced, cluster_labels = clusterer.transform(embeddings)
+#
+# print("Размерность после SVD:", embeddings_reduced.shape)
 # print("Метки кластеров:", cluster_labels)
+#
+# clusterer.plot_clusters(embeddings_reduced, cluster_labels)
