@@ -8,23 +8,18 @@ from PyQt5.QtWidgets import (
     QLabel,
     QListWidget
 )
-# import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton
+from PyQt5 import QtWidgets #import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton
 import plotly.graph_objects as go
 from plotly.offline import iplot
-
 import numpy as np
-# Стандартное импортирование plotly
-# from chart_studio import plotly
-# import plotly.plotly as py
-# import plotly.graph_objs as go
-# from plotly.offline import iplot
-embeddings = list(np.load("эмбеддинги2d.npy"))
-clusters = list(np.load("метки_кластеров.npy"))
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg
+import plotly.io as pio
+import pyqtgraph as pg
+
 
 # посичтали количесвто каждого числа в кластере
 def count_numbers(numbers):
@@ -32,13 +27,10 @@ def count_numbers(numbers):
   for number in numbers:
     if number in counts:
       counts[number.item()]["size"] += 1
-    #   counts[number]["xy"].append(embeddings[i])
     else:
       counts[number.item()] = {}
       counts[number.item()]["size"] = 1
-    #   counts[number]["xy"] = [embeddings[i]]
   return counts
-data = count_numbers(clusters)
 
 # заполнили для каждого кластера всевозможные координаты
 def add_coordinats(data, clusters, embeddings):
@@ -49,58 +41,44 @@ def add_coordinats(data, clusters, embeddings):
             data[clusters[i].item()]["xy"] = [embedding]
 
     return data
-data = add_coordinats(data, clusters, embeddings)
 
 # для каждой координаты найдем центр
 def center_of_coordinates(data):
     for clust in data:
-    #    print(data[clust])
-    #    print(data[clust]["xy"])
-    #    print(np.mean(data[clust]["xy"], axis=0).tolist()[0])
        data[clust]["x"] = np.mean(np.array(data[clust]["xy"]), axis=0).tolist()[0]
        data[clust]["y"] = np.mean(np.array(data[clust]["xy"]), axis=0).tolist()[1]
        data[clust].pop("xy")
 
     return data
 
-data_pot = center_of_coordinates(data)
-
-answers = np.load("ответы_сотрудников.npy")
 def add_text_value(data, clustesr, answers):
     for i, clust in enumerate(clusters):
         if "text" in data[clustesr[i].item()]:
             data[clustesr[i].item()]["text"].append(answers[i].item())
         else:
             data[clustesr[i].item()]["text"] = [answers[i].item()]
-
     return data
-    
-data = add_text_value(data, clusters, answers)
 
 
 class BarChartApp(QWidget):
-    def __init__(self, data, suggestions):
+    def __init__(self, data, embeddings, answers, clusters,  suggestions):
         super().__init__()
 
+        self.clusters = clusters
+        self.embeddings = embeddings
+        self.answers = answers
         self.data = data
         self.suggestions = suggestions
+        self.data_plotly = data_plot
+        self.radius_const = 10
 
-        self.data_plotly = data_pot
-        self.radius_const = 30
 
         for i in self.data_plotly:
             self.data_plotly[i]["size"] = self.data_plotly[i]["size"]*self.radius_const
-
-        # self.data_plotly = {
-        #     "деньги": {"x": 10, "y": 12, "size": 36, "text": ["мани", "бабки"]},
-        #     "интерес": {"x": 14, "y": 5, "size": 50, "text": ["интерес1", "интерес2"]},
-        #     "время": {"x": 30, "y": 20, "size": 100, "text": ["секунда", "часы"]}
-        # }
-
         self.initUI()
 
     def initUI(self):
-        self.setWindowTitle("BarChart App")
+        self.setWindowTitle("Облако слов")
 
         # Создаем фигуру и холст для графика
         self.figure = Figure()
@@ -110,31 +88,103 @@ class BarChartApp(QWidget):
         self.label = QLabel("Выберите категорию")
         self.listWidget = QListWidget()
         self.buttonLayout = QHBoxLayout()
-        self.button_plot = QPushButton("Построить график")
+        # self.button_plot = QPushButton("Построить график")
 
         # Создаем кнопки для каждой категории
         for key in self.data:
             button = QPushButton(key)
             button.clicked.connect(lambda checked, key=key: self.showSuggestions(key))
             self.buttonLayout.addWidget(button)
-
         
-        self.button_plot.clicked.connect(self.plot_graph)
+        # self.button_plot.clicked.connect(self.plot_graph)
 
         # Собираем все элементы в макет
         mainLayout = QVBoxLayout()
-        mainLayout.addWidget(self.canvas)
+        # mainLayout.addWidget(self.canvas, 1)
+        self.plot_widget = pg.PlotWidget()
+        mainLayout.addWidget(self.plot_widget, 1)
+        self.setLayout(mainLayout)
         mainLayout.addWidget(self.label)
-        mainLayout.addWidget(self.listWidget)
+        mainLayout.addWidget(self.listWidget, 1)
         mainLayout.addLayout(self.buttonLayout)
         mainLayout.addWidget(self.label)
-        mainLayout.addWidget(self.button_plot)
-
-        self.setLayout(mainLayout)
-
+        # mainLayout.addWidget(self.button_plot)
+        
         # Рисуем график
         self.drawBarChart()
+        self.create_data()
+        self.draw_clusters()
 
+    def draw_clusters(self):
+        # Очищаем график перед перерисовкой
+        self.plot_widget.clear()
+
+        # Сохраняем объекты кругов для обработки событий
+        self.circles = []
+
+        for i, (center, size) in enumerate(zip(self.cluster_centers, self.cluster_sizes)):
+            # Размер круга зависит от количества фраз в кластере
+            radius = size * 0.05
+
+            # Создаем круг
+            circle = QtWidgets.QGraphicsEllipseItem(-radius, -radius, radius*2, radius*2)
+            circle.setPen(pg.mkPen(color=(0, 0, 200), width=2))
+            circle.setBrush(pg.mkBrush(100, 100, 250, 80))
+            circle.setPos(center[0], center[1])
+            circle.setData(1, self.cluster_summaries[i])
+
+            # Добавляем круг на график
+            self.plot_widget.addItem(circle)
+            self.circles.append(circle)
+
+            # Добавляем обобщающую фразу в центр круга
+            text = pg.TextItem(f'Кластер {self.cluster_summaries[i]}', anchor=(0.5, 0.5), color=(0, 0, 0))
+            text.setPos(center[0], center[1])
+            text.setData(1, self.cluster_summaries[i])
+            self.plot_widget.addItem(text)
+
+        # Настраиваем событие клика мыши
+        self.plot_widget.scene().sigMouseClicked.connect(self.on_click)
+
+
+
+    def create_data(self):
+        # Набор коротких фраз
+        self.phrases = self.answers
+
+        # Метки кластеров
+        self.labels = self.clusters
+
+        # Обобщающие фразы для каждого кластера
+        indexes = np.unique(self.clusters, return_index=True)[1]
+        self.cluster_summaries = [self.clusters[index] for index in sorted(indexes)]
+
+
+        # Вычисляем центры и размеры кластеров
+        self.cluster_centers = []
+        self.cluster_sizes = []
+        for i in range(len(self.cluster_summaries)):
+            indices = np.where(self.labels == i)[0]
+            center = np.mean(self.embeddings[indices], axis=0)
+            size = len(indices)
+            self.cluster_centers.append(center)
+            self.cluster_sizes.append(size)
+
+
+    def on_click(self, event):
+        pos = event.scenePos()
+        items = self.plot_widget.scene().items(pos)
+        # Сортируем элементы по расстоянию до точки pos
+        from PyQt5.QtCore import QPointF, QLineF
+        items.sort(key=lambda item: QLineF(item.mapToScene(item.boundingRect().center()), pos).length())
+        for item in items:
+            cluster_index = item.data(1) 
+            # print(cluster_index)
+            if cluster_index is not None:
+                self.showSuggestions(str(cluster_index))
+                break
+
+    
     def plot_graph(self):
         fig = go.Figure()
 
@@ -152,16 +202,17 @@ class BarChartApp(QWidget):
                 hovertemplate='<b>%{text}</b> \
                     X: %{x:.2f} \
                     Y: %{y:.2f} \
-                    Size: %{marker.size}<extra></extra>'
+                    Size: %{marker.size:.2f}<extra></extra>'
             ))
-
         fig.update_layout(
             title="Интерактивный график",
             xaxis_title="X",
             yaxis_title="Y"
         )
-
-        iplot(fig)
+        pio.write_image(fig, "plotly_figure.svg")
+        self.canvas.draw()
+        
+        
 
     def drawBarChart(self):
         # Очищаем предыдущий график
@@ -186,39 +237,22 @@ class BarChartApp(QWidget):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-
-    # Пример данных
-    # data = {
-    #     "деньги": 59,
-    #     "интерес": 30,
-    #     "время": 100,
-    #     "удовольствие": 80,
-    #     "успех": 95,
-    #     "счастье": 70
-    # }
-    # suggestions = {
-    #     "деньги": [ "зп", "бабки", "мани", "бабосики", "зп", "бабки", "мани", "бабосики", "зп", "бабки", "мани", "бабосики", "зп", "бабки", "мани", "бабосики", "зп", "бабки", "мани", "бабосики", "зп", "бабки", "мани", "бабосики"],
-    #     "интерес": [ "велик", "качаалка"],
-    #     "время": [ "часики", "график", "расписание", "длительность"],
-    #     "удовольствие": [ "вкусности", "плойка", "спа", "бассейн"],
-    #     "успех": [ "Грамота", "диплом", "тачка"],
-    #     "счастье": [ "семья", "дети"]
-    # }
-    
+    embeddings = np.load("эмбеддинги2d.npy")
+    print(f'embeddings: {embeddings}\n')
+    clusters = np.load("метки_кластеров.npy")
+    print(f'clusters: {clusters}\n')
+    answers = np.load("ответы_сотрудников.npy")
+    print(f'answers: {answers}\n')
+    data_plot = count_numbers(clusters)
+    data_plot = add_coordinats(data_plot, clusters, embeddings)
+    data_plot = center_of_coordinates(data_plot)
+    data_plot = add_text_value(data_plot, clusters, answers)
     data = {}
     suggestions = {}
 
-    for i in data_pot:
-        suggestions[str(i)] = data_pot[i]["text"]
-        data[str(i)] = data_pot[i]["size"]
-
-    print(suggestions)
-
-    print(data)
-
-
-    
-
-    window = BarChartApp(data, suggestions)
+    for i in data_plot:
+        suggestions[str(i)] = data_plot[i]["text"]
+        data[str(i)] = data_plot[i]["size"]
+    window = BarChartApp(data, embeddings, answers, clusters, suggestions)
     window.show()
     sys.exit(app.exec_())
