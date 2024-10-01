@@ -1,7 +1,14 @@
-import tensorflow_hub as hub
-import tensorflow_text
-class universal_sentence_encoder():
+from transformers import BertTokenizer, BertModel
+import torch
+
+class RuBertEmbedder:
     def __init__(self):
-        self.model = hub.load("https://www.kaggle.com/models/google/universal-sentence-encoder/TensorFlow2/multilingual/2")
-    def transform(self, texts):
-        return self.model(texts)
+        self.tokenizer = BertTokenizer.from_pretrained('DeepPavlov/rubert-base-cased')
+        self.model = BertModel.from_pretrained('DeepPavlov/rubert-base-cased')
+
+    def embed(self, texts):
+        inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt", max_length=50)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        embeddings = outputs.last_hidden_state.mean(dim=1).numpy()
+        return embeddings
