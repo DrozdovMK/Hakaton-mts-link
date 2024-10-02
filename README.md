@@ -86,7 +86,7 @@
 
 Приложение написанов при помощи фреймворка PyQT5 для удобной подкгрузки данных и понятной визуализации.
 
-![Watch the video](images/PyQT5.mp4)
+https://github.com/DrozdovMK/Hakaton-mts-link/images/PyQT5.mp4
 
 
 
