@@ -4,7 +4,6 @@ from sklearn.decomposition import TruncatedSVD, PCA
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.metrics import pairwise_distances, silhouette_score
 import numpy as np
-from embedding_model import *
 #import matplotlib.pyplot as plt
 #import pandas as pd
 
@@ -32,8 +31,9 @@ class Clasterer:
 
         embeddings_reduced = self.reducer.fit_transform(embeddings)
         kmeans_labels, kmeans_silhouette = self.kmeans_clustering(embeddings_reduced)
+        return embeddings_reduced, kmeans_labels
+        # Ниже не выполняю, т.к прога ломается при попытке найти оптимальные параметры для DBSCAN
         dbscan_labels, dbscan_silhouette = self.dbscan_clustering(embeddings_reduced)
-
         if kmeans_silhouette > dbscan_silhouette:
             print(f"Лучший метод: K-Means с силуэтным коэффициентом {kmeans_silhouette:.4f}")
             return embeddings_reduced, kmeans_labels
