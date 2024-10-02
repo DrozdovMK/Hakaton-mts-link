@@ -48,7 +48,7 @@ class Clasterer:
         best_labels = None
 
         for k in range(3, self.max_clusters + 1):
-            kmeans = KMeans(n_clusters=k, random_state=42)
+            kmeans = KMeans(n_clusters=k)
             labels = kmeans.fit_predict(embeddings)
             silhouette_avg = silhouette_score(embeddings, labels)
 

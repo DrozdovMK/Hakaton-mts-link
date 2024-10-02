@@ -5,6 +5,7 @@ from pymystem3 import Mystem
 import nltk
 from nltk.corpus import stopwords
 from collections import Counter
+from PyQt5.QtWidgets import QApplication
 import os
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
@@ -39,12 +40,12 @@ class gpt_summarizer():
                 responses_for_gpt = ordered_responses[:self.max_gpt_responses]
             else:
                 responses_for_gpt = responses.copy()
-            print(responses_for_gpt)
             answer = self.client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": """Длительность предложения строго не более 4 слов, 
                        Выдели главную мысль списка фраз:{} """
                        .format('; '.join(responses_for_gpt))}],)
+            QApplication.processEvents()
             if answer.choices[0].message.content != "": # если ответ пришел
                 return answer.choices[0].message.content
             else: # вернуть оффлайн рассчитанные значения

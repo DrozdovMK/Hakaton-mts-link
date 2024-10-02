@@ -1,13 +1,25 @@
 # -*- coding: utf-8 -*-
 import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QGridLayout, QWidget, QFrame,QFileDialog,QHBoxLayout,
-                             QVBoxLayout, QPushButton, QLineEdit, QLabel, QFormLayout, QSizePolicy, QFileDialog)
+from PyQt5.QtCore import QThread, pyqtSignal
+import time
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame,QFileDialog,QHBoxLayout,
+                             QVBoxLayout, QPushButton, QLabel, QSizePolicy, QFileDialog)
 from scripts.PlotPyQT import BarChartWidget
 import numpy as np
 from scripts.embedding_model import RuBertEmbedder, universal_sentence_encoder
 from scripts.clasterer import Clasterer
+from scripts.forms import google_form_table
 import pandas as pd
+
+class Worker(QThread):
+    progress = pyqtSignal(int)
+
+    def run(self):
+        for i in range(10):
+            QThread.sleep(1)  # Симуляция долгой задачи
+            self.progress.emit(i)
+
 class UI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -92,9 +104,6 @@ class UI(QMainWindow):
         frame1_2_layout.addLayout(self.data_choose_layout)
         
         frame1_2_layout.addWidget(self.compute_button)
-        embeddings = np.load("dima/эмбеддинги2d.npy")
-        clusters = np.load("dima/метки_кластеров.npy")
-        answers = np.load("dima/ответы_сотрудников.npy")
         self.window = BarChartWidget()
         # window.apply(embeddings, answers, clusters)
         # window.initUI()
@@ -107,7 +116,8 @@ class UI(QMainWindow):
             self.data = pd.read_csv(csv_file).iloc[1:,0].reset_index(drop=True)
             self.data_status.setText("Выбранный файл: {}".format(csv_file) )
         elif type_of_data == 'gf':
-            pass
+            self.data = google_form_table()[0]
+            self.data_status.setText("Выбрана гугл форма")
     def get_model(self, model_name):
         if model_name == 'use':
             self.embedding_model = universal_sentence_encoder()
@@ -122,8 +132,11 @@ class UI(QMainWindow):
         embeddings_reduced, cluster_labels = clusterer.transform(embeddings)
         self.window.apply(embeddings = embeddings_reduced,
                           answers = np.array(self.data, dtype = np.str_),
-                          clusters = cluster_labels)
-        self.window.initUI()
+                          clusters = cluster_labels,
+                          offline = True,
+                          count_offline_words = 3, 
+                          max_gpt_responses = 5)
+        
 if __name__ == '__main__':
     
     app = QApplication(sys.argv)
