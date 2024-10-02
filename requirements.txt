@@ -9,3 +9,9 @@ scipy==1.14.1
 threadpoolctl==3.5.0
 gspread
 oauth2client
+tensorflow
+tensorflow_hub
+g4f
+pymystem3
+nltk
+torch
