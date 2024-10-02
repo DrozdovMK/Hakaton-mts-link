@@ -4,6 +4,8 @@
 
 # Установка
 
+0. Версия python 3.10.15
+
 1. Клонирование репозитория 
 
 ```git clone https://github.com/DrozdovMK/Hakaton-mts-link.git```
