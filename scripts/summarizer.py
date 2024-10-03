@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import QApplication
 import os
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-
+from scripts.profanity_check import profanity_processing
 class gpt_summarizer():
     """
     Получает ответ по суммаризации от chatGPT (по API). Если нет сети или ответ не пришел, то лемминг
@@ -21,6 +21,7 @@ class gpt_summarizer():
         self.client = Client()
         self.lemmatizer = Mystem()
         self.stop_words = []
+        self.censor = profanity_processing()
         self.offline = offline
         self.count_offline_words = count_offline_words
         self.max_gpt_responses = max_gpt_responses
@@ -60,8 +61,8 @@ class gpt_summarizer():
         filtered_tokens = [word for word in all_tokens if word not in self.stop_words]
         frequency = Counter(filtered_tokens)
         most_common = frequency.most_common(self.count_offline_words)
-        return "Популярные слова: "+ '; '.join([most_common[i][0] + '({})'.format(most_common[i][1])
-                                                for i in range(self.count_offline_words )])
+        return self.censor.transform("Популярные слова: "+ '; '.join([most_common[i][0] + ' ({})'.format(most_common[i][1])
+                                                for i in range(self.count_offline_words )]))
     def process_text(self, text):
         tokens = nltk.tokenize.word_tokenize(text.lower())
         tokens = [word for word in tokens if word.isalpha()]

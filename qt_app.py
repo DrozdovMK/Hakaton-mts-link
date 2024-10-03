@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtGui import QPainter, QPixmap
 from PyQt5.QtCore import QThread, pyqtSignal
 import time
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QFrame,QFileDialog,QHBoxLayout,
-                             QVBoxLayout, QPushButton, QLabel, QSizePolicy, QFileDialog)
+                             QVBoxLayout, QPushButton, QLabel, QSizePolicy, QFileDialog, QCheckBox)
 from scripts.PlotPyQT import BarChartWidget
 import numpy as np
 from scripts.embedding_model import RuBertEmbedder, universal_sentence_encoder
@@ -12,18 +13,13 @@ from scripts.clasterer import Clasterer
 from scripts.forms import google_form_table
 import pandas as pd
 
-class Worker(QThread):
-    progress = pyqtSignal(int)
-
-    def run(self):
-        for i in range(10):
-            QThread.sleep(1)  # Симуляция долгой задачи
-            self.progress.emit(i)
 
 class UI(QMainWindow):
     def __init__(self):
         super().__init__()
-        # self.setGeometry(400, 200, 900, 700)
+        # self.setStyleSheet(".QWidget {background-image: url('pictures_for_gui/pic_title1.png');}")
+        self.setStyleSheet("QLabel { font-family: Arial; font-size: 14px; color: black; }")
+        # self.setGeometry(400, 900, 900, 400)
         self.setWindowTitle('Аналитика ответов')
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -60,6 +56,7 @@ class UI(QMainWindow):
         frame1_2.setLayout(frame1_2_layout)
         
         
+        
         self.app_descr_layout = QVBoxLayout()
         self.app_name = QLabel("Анализ ответов", alignment=QtCore.Qt.AlignCenter)
         
@@ -71,28 +68,44 @@ class UI(QMainWindow):
         self.app_descr_layout.addWidget(self.app_name)
         self.app_descr_layout.addWidget(self.app_description)
         
+        icon1 = QtGui.QIcon()
+        icon1.addPixmap(QtGui.QPixmap("pictures_for_gui/free-icon-artificial-intelligence-4616790.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.model_choose_layout = QHBoxLayout() # второй layout
         self.model_1_button = QPushButton("Загрузить RuBERT")
         self.model_1_button.clicked.connect(lambda: self.get_model('rubert'))
+        self.model_1_button.setIcon(icon1)
+        self.model_1_button.setIconSize(QtCore.QSize(30, 30))
         self.model_2_button = QPushButton("Загрузить Universal sentence encoder")
         self.model_2_button.clicked.connect(lambda: self.get_model('use'))
+        self.model_2_button.setIcon(icon1)
+        self.model_2_button.setIconSize(QtCore.QSize(30, 30))
+        self.model_status = QLabel("Статус: модель не загружена")
+        
         self.model_choose_layout.addWidget(self.model_1_button)
         self.model_choose_layout.addWidget(self.model_2_button)
 
-        
+        icon2 = QtGui.QIcon()
+        icon2.addPixmap(QtGui.QPixmap("pictures_for_gui/free-icon-data-collection-7440330.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.data_choose_layout = QHBoxLayout() # второй layout
         self.get_data_gf_button = QPushButton("Получить данные из Google forms")
+        self.get_data_gf_button.setIcon(icon2)
+        self.get_data_gf_button.setIconSize(QtCore.QSize(30, 30))
         self.get_data_gf_button.clicked.connect(lambda: self.get_data('gf'))
         self.get_data_csv_button = QPushButton("Получить данные из csv")
+        self.data_status = QLabel("Статус: данные не загружены")
+        self.get_data_csv_button.setIcon(icon2)
+        self.get_data_csv_button.setIconSize(QtCore.QSize(30, 30))
         self.get_data_csv_button.clicked.connect(lambda: self.get_data('csv'))
         self.data_choose_layout.addWidget(self.get_data_gf_button)
         self.data_choose_layout.addWidget(self.get_data_csv_button)
         
+        self.checkbox = QCheckBox("Использовать API ChatGPT для выделения главной мысли в кластере")
+        self.checkbox.stateChanged.connect(self.checkbox_update_state)
+        self.offline = True
         
         self.compute_button = QPushButton("Запустить модель")
         self.compute_button.clicked.connect(self.start_process)
-        self.data_status = QLabel("Статус: данные не загружены")
-        self.model_status = QLabel("Статус: модель не загружена")
+
         frame1_1_layout.addLayout(self.app_descr_layout)
         frame1_2_layout.addWidget(QLabel("Выберите модель для создания эмбеддингов",
                                          alignment=QtCore.Qt.AlignCenter))
@@ -103,39 +116,63 @@ class UI(QMainWindow):
         frame1_2_layout.addWidget(self.data_status)
         frame1_2_layout.addLayout(self.data_choose_layout)
         
+        frame1_2_layout.addWidget(self.checkbox)
+        
         frame1_2_layout.addWidget(self.compute_button)
-        self.window = BarChartWidget()
-        # window.apply(embeddings, answers, clusters)
-        # window.initUI()
-        frame2_layout.addWidget(self.window)
 
+        
+        self.window = BarChartWidget()
+        frame2_layout.addWidget(self.window)
+        
 
     def get_data(self, type_of_data):
         if type_of_data == 'csv':
             csv_file, _ = QFileDialog.getOpenFileName(self, "Выберите директорию")
-            self.data = pd.read_csv(csv_file).iloc[1:,0].reset_index(drop=True)
-            self.data_status.setText("Выбранный файл: {}".format(csv_file) )
+            try:
+                self.data = pd.read_csv(csv_file).iloc[1:,0].reset_index(drop=True)
+                self.data_status.setText("Выбранный файл: {}".format(csv_file) )
+                self.data_status.setStyleSheet("color: green")
+            except:
+                with open(csv_file, 'r', encoding='utf-8') as file:
+                    lines = file.readlines()
+                    lines = [line.strip().replace('"', '').replace("'", '') for line in lines]
+                    self.data = lines.copy()
+                    self.data_status.setText("Выбранный файл: {}".format(csv_file) )
+                    self.data_status.setStyleSheet("color: green")
         elif type_of_data == 'gf':
             self.data = google_form_table()[0]
             self.data_status.setText("Выбрана гугл форма")
+            self.data_status.setStyleSheet("color: green")
+    
     def get_model(self, model_name):
         if model_name == 'use':
             self.embedding_model = universal_sentence_encoder()
             self.model_status.setText('Загружена модель USE (universal sentence encoder)')
+            self.model_status.setStyleSheet("color: green")
         elif model_name == 'rubert':
             self.embedding_model = RuBertEmbedder()
             self.model_status.setText('Загружена модель RuBert')
+            self.model_status.setStyleSheet("color: green")
+    
+    def checkbox_update_state(self, state):
+        if state == QtCore.Qt.Checked:
+            self.offline = False
+        else:
+            self.offline = True
+            
     def start_process(self):
         embeddings = self.embedding_model.transform(self.data)
         embeddings = np.array(embeddings)
-        clusterer = Clasterer(method = 'svd', n_components=2, max_clusters=8)
+        clusterer = Clasterer(method = 'pca', n_components=2, max_clusters=10)
         embeddings_reduced, cluster_labels = clusterer.transform(embeddings)
+ 
         self.window.apply(embeddings = embeddings_reduced,
-                          answers = np.array(self.data, dtype = np.str_),
-                          clusters = cluster_labels,
-                          offline = True,
-                          count_offline_words = 3, 
-                          max_gpt_responses = 5)
+                        answers = np.array(self.data, dtype = np.str_),
+                        clusters = cluster_labels,
+                        offline = self.offline,
+                        count_offline_words = 3, 
+                        max_gpt_responses = 5)
+
         
 if __name__ == '__main__':
     

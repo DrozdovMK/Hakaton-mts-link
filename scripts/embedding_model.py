@@ -1,5 +1,9 @@
 import torch
 import numpy as np
+import warnings
+from transformers import logging
+logging.set_verbosity_error()
+
 class RuBertEmbedder:
     def __init__(self):
         from transformers import BertTokenizer, BertModel

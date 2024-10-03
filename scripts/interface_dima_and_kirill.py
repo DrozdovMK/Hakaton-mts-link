@@ -154,32 +154,32 @@ class BarChartApp(QWidget):
                 break
 
     
-    def plot_graph(self):
-        fig = go.Figure()
+    # def plot_graph(self):
+    #     fig = go.Figure()
 
-        for key, values in self.data_plotly.items():
-            fig.add_trace(go.Scatter(
-                x=[values["x"]],
-                y=[values["y"]],
-                mode='markers',
-                marker=dict(
-                    size=values["size"],
-                    color='blue',
-                    opacity=0.8
-                ),
-                text=values["text"],
-                hovertemplate='<b>%{text}</b> \
-                    X: %{x:.2f} \
-                    Y: %{y:.2f} \
-                    Size: %{marker.size:.2f}<extra></extra>'
-            ))
-        fig.update_layout(
-            title="Интерактивный график",
-            xaxis_title="X",
-            yaxis_title="Y"
-        )
-        pio.write_image(fig, "plotly_figure.svg")
-        self.canvas.draw()
+    #     for key, values in self.data_plotly.items():
+    #         fig.add_trace(go.Scatter(
+    #             x=[values["x"]],
+    #             y=[values["y"]],
+    #             mode='markers',
+    #             marker=dict(
+    #                 size=values["size"],
+    #                 color='blue',
+    #                 opacity=0.8
+    #             ),
+    #             text=values["text"],
+    #             hovertemplate='<b>%{text}</b> \
+    #                 X: %{x:.2f} \
+    #                 Y: %{y:.2f} \
+    #                 Size: %{marker.size:.2f}<extra></extra>'
+    #         ))
+    #     fig.update_layout(
+    #         title="Интерактивный график",
+    #         xaxis_title="X",
+    #         yaxis_title="Y"
+    #     )
+    #     pio.write_image(fig, "plotly_figure.svg")
+    #     self.canvas.draw()
         
         
 

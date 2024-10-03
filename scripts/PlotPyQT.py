@@ -19,30 +19,31 @@ import matplotlib.image as mpimg
 from scripts.summarizer import gpt_summarizer
 import pyqtgraph as pg
 from PyQt5.QtGui import QTransform
-from PyQt5.QtCore import pyqtSignal, QThread
+from PyQt5.QtCore import pyqtSignal, QThread, QLineF
 from sklearn.decomposition import PCA
 from scripts.profanity_check import profanity_processing
 
-# посчитали количество каждого числа в кластере
-def count_numbers(numbers):
-  counts = {}
-  for number in numbers:
-    if number in counts:
-      counts[number.item()]["size"] += 1
-    else:
-      counts[number.item()] = {}
-      counts[number.item()]["size"] = 1
-  return counts
+class ProgressThread(QThread):
+    result_ready = pyqtSignal(list)
+    def __init__(self, mainwindow, parent=None):
+        super().__init__()
+        self.mainwindow = mainwindow
+    def set_attrs(self, offline, count_offline_words, max_gpt_responses, answers, embeddings, clusters):
+        self.offline = offline
+        self.count_offline_words = count_offline_words
+        self.max_gpt_responses = max_gpt_responses
+        self.answers = answers
+        self.embeddings = embeddings
+        self.clusters = clusters
+    def run(self):
+        self.mainwindow.create_data(self.offline,self.count_offline_words,self.max_gpt_responses)
+        results = [
+            self.mainwindow.embeddings_clustered,
+            self.mainwindow.answers_clustered,
+            self.mainwindow.cluster_summaries]
+        self.result_ready.emit(results)
 
-# заполнили для каждого кластера всевозможные координаты
-def add_coordinats(data, clusters, embeddings):
-    for i, embedding in enumerate(embeddings):
-        if "xy" in data[clusters[i].item()]:
-            data[clusters[i].item()]["xy"].append(embedding)
-        else:
-            data[clusters[i].item()]["xy"] = [embedding]
 
-    return data
 def ellipse_settings(points):
     centroid = np.mean(points, axis=0)
     pca = PCA(n_components=2)
@@ -54,25 +55,7 @@ def ellipse_settings(points):
     return centroid, x_radius, y_radius, angle
     
 
-# для каждой координаты найдем центр
-def center_of_coordinates(data):
-    for clust in data:
-       data[clust]["x"] = np.mean(np.array(data[clust]["xy"]), axis=0).tolist()[0]
-       data[clust]["y"] = np.mean(np.array(data[clust]["xy"]), axis=0).tolist()[1]
-       data[clust].pop("xy")
-
-    return data
-
-def add_text_value(data, clusters, answers):
-    for i, clust in enumerate(clusters):
-        if "text" in data[clusters[i].item()]:
-            data[clusters[i].item()]["text"].append(answers[i].item())
-        else:
-            data[clusters[i].item()]["text"] = [answers[i].item()]
-    return data
-
 class CustomEllipseItem(QGraphicsEllipseItem):
-    clicked = pyqtSignal(object)
     def __init__(self, centriod, width, height, angle, label):
         super().__init__(-width, -height, width*2, height*2)
         self.setRotation(angle)
@@ -81,24 +64,12 @@ class CustomEllipseItem(QGraphicsEllipseItem):
         self.setBrush(pg.mkBrush(100, 100, 250, 80))
         self.label = label
 
-class CustomGraphicsScene(QGraphicsScene):
-    def mousePressEvent(self, event):
-        item = self.itemAt(event.scenePos(), QTransform())
-        if isinstance(item, CustomEllipseItem):
-            item.on_click()
-
 class BarChartWidget(QWidget):
     def __init__(self):
         super().__init__()
+        self.thread = ProgressThread(mainwindow=self)
         self.censor = profanity_processing()
-        self.radius_const = 10
-        self.setWindowTitle("Облако слов")
-        # Создаем фигуру и холст для графика
-        self.figure = Figure()
-        self.canvas = FigureCanvas(self.figure)
-        # Создаем элементы интерфейса
         self.listWidget = QListWidget()
-        # Собираем все элементы в макет
         mainLayout = QVBoxLayout()
         self.plot_widget = pg.PlotWidget()
         mainLayout.addWidget(self.plot_widget, 1)
@@ -106,26 +77,17 @@ class BarChartWidget(QWidget):
         mainLayout.addWidget(self.listWidget, 1)
         
     def apply(self, embeddings, answers, clusters, offline, count_offline_words, max_gpt_responses ):
-    
-        self.summarizer = gpt_summarizer(offline, count_offline_words, max_gpt_responses )
+        self.offline = offline
+        self.count_offline_words = count_offline_words
+        self.max_gpt_responses = max_gpt_responses
         self.answers = answers
         self.embeddings = embeddings
         self.clusters = clusters
-        self.data_plot = count_numbers(self.clusters)
-        self.data_plot = add_coordinats(self.data_plot, self.clusters, self.embeddings)
-        self.data_plot = center_of_coordinates(self.data_plot)
-        self.data_plot = add_text_value(self.data_plot, self.clusters, self.answers)
-        self.data = {}
-        self.suggestions = {}
-        
-        for i in self.data_plot:
-            self.suggestions[i] = self.data_plot[i]["text"]
-            self.data[i] = self.data_plot[i]["size"]
-        self.initUI()
+        self.thread.result_ready.connect(self.on_result_ready) 
+        # Выносим долгую часть в отдельный поток
+        self.thread.set_attrs(offline, count_offline_words, max_gpt_responses, answers, embeddings, clusters)
+        self.thread.start()
 
-    def initUI(self):
-        self.create_data()
-        self.draw_clusters()
 
     def draw_clusters(self):
         """
@@ -136,77 +98,87 @@ class BarChartWidget(QWidget):
         # Сохраняем объекты кругов для обработки событий
         for i, embed_clustered in enumerate(self.embeddings_clustered):
             centroid, width, height, angle = ellipse_settings(embed_clustered)
-            # Добавим точки
             scatter = pg.ScatterPlotItem(x = embed_clustered[:, 0],
                                          y = embed_clustered[:, 1],
                                          pen=pg.mkPen(width=1, color='r'), symbol='o', size=1)
+
             self.plot_widget.addItem(scatter)
-            
-            # Создаем эллипс
             ellipse = CustomEllipseItem(centroid, width, height, angle, label = i)
-            ellipse.mousePressEvent = self.create_mouse_press_event_handler(ellipse.label)
-            # Добавляем эллипс на график
+            ellipse.setData(0, i)
             self.plot_widget.addItem(ellipse)
-            
-            # Добавляем обобщающую фразу в центр круга
+            # Добавляем название кластера в  центр круга
             text = pg.TextItem("Кластер {}".format(i), anchor=(0.5, 0.5), color=(255, 255, 255))
             text.setPos(centroid[0], centroid[1])
             text.setData(0, i)
-            text.setData(1, self.censor.transform(self.cluster_summaries[i]))
             self.plot_widget.addItem(text)
+        self.plot_widget.scene().sigMouseClicked.connect(self.on_click)
+    
+    def on_click(self, event):
+        pos = event.scenePos()
+        items = self.plot_widget.scene().items(pos)
 
+        # Сортируем элементы по расстоянию до точки pos
+        
+        items.sort(key=lambda item: QLineF(item.mapToScene(item.boundingRect().center()), pos).length())
+        for item in items:
+            if isinstance(item.data, np.ndarray):
+                pass
+            else:
+                cluster_index = item.data(0) 
+                if cluster_index is not None:
+                    self.showSuggestions(cluster_index)
+                    break
+    
     
     def create_mouse_press_event_handler(self, label):
         def mouse_press_event(event):
             self.showSuggestions(label)
         return mouse_press_event
 
-    def create_data(self):
+    def create_data(self, offline, count_offline_words, max_gpt_responses):
         """
         Находит обобщающие кластеры и разделяет эмбеддинги по кластерам
         """
         # Обобщающие фразы для каждого кластера
+        self.summarizer = gpt_summarizer(offline, count_offline_words, max_gpt_responses)
         indexes = np.unique(self.clusters, return_index=True)[1]
         self.embeddings_clustered = []
+        self.answers_clustered = []
         self.cluster_summaries = {}
         for i in range(len(indexes)):
-            self.cluster_summaries[i] = self.censor.transform(self.summarizer.summarize(self.answers[self.clusters == i],
-                                                                  self.embeddings[self.clusters == i]))
-            self.embeddings_clustered.append(self.embeddings[self.clusters == i])
+
+            emb_clust = self.embeddings[self.clusters == i]
+            ans_clust = self.answers[self.clusters == i]
+            center_clust = np.mean(emb_clust, axis=0)
+            distances = np.linalg.norm(emb_clust - center_clust, axis=1)
+            phrase_distance_pairs = list(zip(ans_clust,emb_clust, distances))
+            phrase_distance_pairs.sort(key=lambda x: x[2], reverse=False)
+            sorted_phrases = np.array([pair[0] for pair in phrase_distance_pairs])
+            sorted_emb = np.array([pair[1] for pair in phrase_distance_pairs])
+            self.embeddings_clustered.append(sorted_emb)
+            self.answers_clustered.append(sorted_phrases)
+            self.cluster_summaries[i] = self.summarizer.summarize(self.answers[self.clusters == i],
+                                                                  self.embeddings[self.clusters == i])
             
-    def plot_graph(self):
-        fig = go.Figure()
-        for key, values in self.data_plotly.items():
-            fig.add_trace(go.Scatter(
-                x=[values["x"]],
-                y=[values["y"]],
-                mode='markers',
-                marker=dict(
-                    size=values["size"],
-                    color='blue',
-                    opacity=0.8
-                ),
-                text=values["text"],
-                hovertemplate='<b>%{text}</b> \
-                    X: %{x:.2f} \
-                    Y: %{y:.2f} \
-                    Size: %{marker.size:.2f}<extra></extra>'
-            ))
-        fig.update_layout(
-            title="Интерактивный график",
-            xaxis_title="X",
-            yaxis_title="Y"
-        )
-        pio.write_image(fig, "plotly_figure.svg")
-        
     def showSuggestions(self, category_index):
         # Очищаем список предложений
         self.listWidget.clear()
+        self.listWidget.addItem("Описание кластера {}: ".format(category_index))
+        clustered_answers = self.answers_clustered[category_index]
         description = self.cluster_summaries[category_index]
+        self.listWidget.addItem("Количество объектов в кластере:{}".format(len(clustered_answers)))
         self.listWidget.addItem(description)
+        self.listWidget.addItem("============================================")
         # Заполняем список предложений
-        for suggestion in self.suggestions[category_index]:
-            self.listWidget.addItem(self.censor.transform(suggestion))
+        for answer in clustered_answers:
+            self.listWidget.addItem(self.censor.transform(answer))
+    def on_result_ready(self, result):
+        # Обработка результата после завершения потока
+        self.embeddings_clustered, self.answers_clustered, self.cluster_summaries = result
+        self.thread.quit()  # Завершение потока
+        self.thread.wait()  # Ожидание завершения потока
+        self.worker_thread = None
+        self.draw_clusters()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
