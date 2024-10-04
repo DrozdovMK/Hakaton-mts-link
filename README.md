@@ -92,7 +92,9 @@
 Приложение написанов при помощи фреймворка PyQT5 для удобной подкгрузки данных и понятной визуализации.
 
 
-https://github.com/user-attachments/assets/abd34c6e-b979-435d-8af8-343b43fa1231
+https://github.com/user-attachments/assets/5dfe4d99-7d15-402f-822d-58b1ab433e5b
+
+
 
 
 
