@@ -10,6 +10,7 @@ import os
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 from scripts.profanity_check import profanity_processing
+import requests
 class gpt_summarizer():
     """
     Получает ответ по суммаризации от chatGPT (по API). Если нет сети или ответ не пришел, то лемминг
@@ -17,7 +18,7 @@ class gpt_summarizer():
     offline = False (по умолчанию) пытается достучаться до chatgpt или нет
     count_offline_words = 2 в случае если не получил ответ от chatgpt, то сколько слов вернуть
     """
-    def __init__(self, offline = False, count_offline_words = 2, max_gpt_responses = 8):
+    def __init__(self, offline = False, count_offline_words = 2, max_gpt_responses = 10):
         self.client = Client()
         self.lemmatizer = Mystem()
         self.stop_words = []
@@ -26,6 +27,7 @@ class gpt_summarizer():
         self.count_offline_words = count_offline_words
         self.max_gpt_responses = max_gpt_responses
         file_with_stopwords = os.path.join(os.path.dirname(__file__), 'stopwords-ru.txt')
+        self.model = 'payed'
         with open(file_with_stopwords, 'r') as f:
             for line in f:
                 word = line.strip()
@@ -36,18 +38,52 @@ class gpt_summarizer():
                 responses_for_gpt = responses[:self.max_gpt_responses]
             else:
                 responses_for_gpt = responses.copy()
-            answer = self.client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": """Длительность предложения строго не более 4 слов, 
-                       Выдели главную мысль списка фраз:{} """
-                       .format('; '.join(responses_for_gpt))}],)
-            # QApplication.processEvents()
-            if answer.choices[0].message.content != "": # если ответ пришел
-                return answer.choices[0].message.content
-            else: # вернуть оффлайн рассчитанные значения
+            if self.model == 'free':
+                return self.free_gpt_sumarize(responses_for_gpt)
+            elif self.model == 'payed':
+                return self.payed_gpt_summarized(responses_for_gpt)
+            
+        else: # вернуть оффлайн рассчитанные значения
                 return self.offline_summarize(responses)
+        
+    def free_gpt_sumarize(self, phrazes):
+        answer = self.client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": """Длительность предложения строго не более 4 слов, 
+                       Выдели главную мысль списка фраз:{} """
+                       .format('; '.join(phrazes))}],)
+            # QApplication.processEvents()
+        if answer.choices[0].message.content != "": # если ответ пришел
+            return answer.choices[0].message.content
         else: # вернуть оффлайн рассчитанные значения
             return self.offline_summarize(responses)
+    def payed_gpt_summarized(self, phrazes):
+        with open('keys/chad_key.csv', 'r', encoding='utf-8') as file:
+            # Читаем единственную строку
+            CHAD_API_KEY = file.readline().strip() 
+        request_json = {
+            "message": """Выдели коротко главную мысль этого набора фраз:{} """
+                       .format('; '.join(phrazes)),
+            "api_key": CHAD_API_KEY
+        }
+        response = requests.post(url='https://ask.chadgpt.ru/api/public/gpt-3.5',
+                         json=request_json)
+        
+        if response.status_code != 200:
+            print(f'Ошибка! Код http-ответа: {response.status_code}')
+        else:
+            # Получаем текст ответа и преобразовываем в dict
+            resp_json = response.json()
+
+            # Если успешен ответ, то выводим
+            if resp_json['is_success']:
+                resp_msg = resp_json['response']
+                used_words = resp_json['used_words_count']
+                return str(resp_msg)
+            else:
+                error = resp_json['error_message']
+                return f'Ошибка: {error}'
+    
     def offline_summarize(self, phrases):
         all_tokens = []
         for phrase in phrases:
