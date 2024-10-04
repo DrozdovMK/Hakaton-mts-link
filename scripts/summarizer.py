@@ -33,12 +33,7 @@ class gpt_summarizer():
     def summarize(self, responses, embeddings):
         if self.is_connected() and not self.offline: # если подключение есть и не хотим оффлайн алгоритм
             if len(responses) > self.max_gpt_responses: #проверяем что кол-во ответов в кластере больше чем установленное значение
-                embeddings_center = embeddings.mean(axis=0)
-                distances = [(self.cosine_distance(point, embeddings_center), phrase) 
-                            for (point, phrase) in zip(embeddings, responses)]
-                sorted_points = sorted(distances, key=lambda x: x[0], reverse=False)
-                ordered_responses = [point for _, point in sorted_points]
-                responses_for_gpt = ordered_responses[:self.max_gpt_responses]
+                responses_for_gpt = responses[:self.max_gpt_responses]
             else:
                 responses_for_gpt = responses.copy()
             answer = self.client.chat.completions.create(
@@ -46,7 +41,7 @@ class gpt_summarizer():
             messages=[{"role": "user", "content": """Длительность предложения строго не более 4 слов, 
                        Выдели главную мысль списка фраз:{} """
                        .format('; '.join(responses_for_gpt))}],)
-            QApplication.processEvents()
+            # QApplication.processEvents()
             if answer.choices[0].message.content != "": # если ответ пришел
                 return answer.choices[0].message.content
             else: # вернуть оффлайн рассчитанные значения

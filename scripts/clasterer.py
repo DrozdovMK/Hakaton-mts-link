@@ -16,9 +16,9 @@ class Clasterer:
         self.method = method
 
         if self.method == 'svd':
-            self.reducer = TruncatedSVD(n_components=self.n_components)
+            self.reducer = TruncatedSVD(n_components=self.n_components, random_state = 42)
         elif self.method == 'pca':
-            self.reducer = PCA(n_components=self.n_components)
+            self.reducer = PCA(n_components=self.n_components, random_state = 42)
         else:
             raise ValueError("Invalid method. Choose 'svd' or 'pca'.")
 
@@ -50,11 +50,11 @@ class Clasterer:
         for k in range(3, self.max_clusters + 1):
             kmeans = KMeans(n_clusters=k)
             labels = kmeans.fit_predict(embeddings)
-            silhouette_avg = silhouette_score(embeddings, labels)
+            silhouette_avg = silhouette_score(embeddings, labels, random_state = 42)
 
             print(f"K-Means (k={k}): силуэтный коэффициент = {silhouette_avg:.4f}")
 
-            if silhouette_avg > best_silhouette:
+            if silhouette_avg+ 0.0005 > best_silhouette:
                 best_silhouette = silhouette_avg
                 best_k = k
                 best_labels = labels

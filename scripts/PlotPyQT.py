@@ -157,8 +157,8 @@ class BarChartWidget(QWidget):
             sorted_emb = np.array([pair[1] for pair in phrase_distance_pairs])
             self.embeddings_clustered.append(sorted_emb)
             self.answers_clustered.append(sorted_phrases)
-            self.cluster_summaries[i] = self.summarizer.summarize(self.answers[self.clusters == i],
-                                                                  self.embeddings[self.clusters == i])
+            self.cluster_summaries[i] = self.summarizer.summarize(sorted_phrases,
+                                                                  sorted_emb)
             
     def showSuggestions(self, category_index):
         # Очищаем список предложений

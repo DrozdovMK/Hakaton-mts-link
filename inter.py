@@ -26,7 +26,7 @@ class UI(QMainWindow):
         main_layout = QHBoxLayout()
         central_widget.setLayout(main_layout)
         # Создаем два фрейма для каждой части окна, слева и справа
-        frame1 = QFrame()
+        frame1 = QFrame()   
         frame1.setFrameShape(QFrame.StyledPanel)
         frame1.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
         frame2 = QFrame()
